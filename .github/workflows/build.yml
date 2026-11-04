@@ -1,0 +1,72 @@
+name: Build Factor Saz
+
+on:
+  push:
+    paths:
+      - 'source.enc'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # سورس رمزدار است؛ رمز فقط در Settings → Secrets → Actions با اسم SRC_PASS ذخیره می‌شود
+      - name: Decrypt source
+        env:
+          SRC_PASS: ${{ secrets.SRC_PASS }}
+        run: |
+          if [ -z "$SRC_PASS" ]; then echo "::error::Secret SRC_PASS is not set"; exit 1; fi
+          mkdir -p "$RUNNER_TEMP/src"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in source.enc -out "$RUNNER_TEMP/src.zip" -pass env:SRC_PASS
+          unzip -q "$RUNNER_TEMP/src.zip" -d "$RUNNER_TEMP/src"
+          rm -f "$RUNNER_TEMP/src.zip"
+          echo "SRC=$RUNNER_TEMP/src" >> "$GITHUB_ENV"
+
+      # کتابخانه‌های ساخت عکس و PDF و فونت وزیرمتن داخل برنامه قرار می‌گیرند تا بدون اینترنت هم کار کند
+      - name: Bundle offline libraries
+        run: |
+          V="$SRC/app/src/main/assets/vendor"; T="$RUNNER_TEMP/npm"; mkdir -p "$T" && cd "$T"
+          npm pack html2canvas@1.4.1 jspdf@2.5.1 vazirmatn@33.0.3 >/dev/null
+          for f in *.tgz; do mkdir -p "x/$f" && tar -xzf "$f" -C "x/$f"; done
+          cp "$(find x -path '*html2canvas*' -name html2canvas.min.js | head -1)" "$V/"
+          cp "$(find x -path '*jspdf*' -name jspdf.umd.min.js | head -1)" "$V/"
+          for w in Regular Medium Bold ExtraBold; do f=$(find x -name "Vazirmatn-$w.woff2" | grep -v -i "variable\|UI\|RD\|FD" | head -1); [ -n "$f" ] && cp "$f" "$V/"; done
+          ls -la "$V"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      # APK برای دانلود مستقیم · AAB برای گوگل پلی (فقط برای صاحب مخزن)
+      - name: Build (obfuscated release)
+        run: cd "$SRC" && gradle assembleRelease bundleRelease --no-daemon --stacktrace
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp "$SRC/app/build/outputs/apk/release/app-release.apk" Factor-Saz.apk
+          cp "$SRC/app/build/outputs/bundle/release/app-release.aab" Factor-Saz-play.aab
+          rm -rf "$SRC"
+          gh release create "v${{ github.run_number }}" Factor-Saz.apk \
+            --title "فاکتورساز v${{ github.run_number }}" \
+            --notes "Made by (R.S) · فایل Factor-Saz.apk را دانلود و نصب کن (روی همهٔ گوشی‌های اندروید ۷ به بالا). همهٔ فاکتورها فقط روی همین گوشی ذخیره می‌شوند." \
+            --repo "${{ github.repository }}"
+
+      - name: Upload AAB (owner only, not public)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Factor-Saz-play-aab
+          path: Factor-Saz-play.aab
+          retention-days: 90
