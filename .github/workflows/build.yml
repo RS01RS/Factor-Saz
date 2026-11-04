@@ -1,4 +1,4 @@
-name: Build Factor Saz
+name: Build Tazmin Faktor
 
 on:
   push:
@@ -60,7 +60,7 @@ jobs:
           cp "$SRC/app/build/outputs/bundle/release/app-release.aab" Factor-Saz-play.aab
           rm -rf "$SRC"
           gh release create "v${{ github.run_number }}" Factor-Saz.apk \
-            --title "فاکتورساز v${{ github.run_number }}" \
+            --title "تضمین فاکتور v${{ github.run_number }}" \
             --notes "Made by (R.S) · فایل Factor-Saz.apk را دانلود و نصب کن (روی همهٔ گوشی‌های اندروید ۷ به بالا). همهٔ فاکتورها فقط روی همین گوشی ذخیره می‌شوند." \
             --repo "${{ github.repository }}"
 
