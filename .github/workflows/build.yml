@@ -64,6 +64,17 @@ jobs:
             --notes "Made by (R.S) · فایل Factor-Saz.apk را دانلود و نصب کن (روی همهٔ گوشی‌های اندروید ۷ به بالا). همهٔ فاکتورها فقط روی همین گوشی ذخیره می‌شوند." \
             --repo "${{ github.repository }}"
 
+      # آینه برای به‌روزرسانی داخل برنامه: شاخهٔ dl (از راه jsDelivr در شبکه‌هایی که گیت‌هاب کند یا بسته است)
+      - name: Mirror for in-app update
+        run: |
+          mkdir -p "$RUNNER_TEMP/dl" && cp Factor-Saz.apk "$RUNNER_TEMP/dl/"
+          printf '{"tag":"v%s","size":%s}\n' "${{ github.run_number }}" "$(stat -c%s Factor-Saz.apk)" > "$RUNNER_TEMP/dl/version.json"
+          cd "$RUNNER_TEMP/dl" && git init -q && git checkout -q -b dl
+          git -c user.name=github-actions -c user.email=actions@github.com add . && git -c user.name=github-actions -c user.email=actions@github.com commit -qm "v${{ github.run_number }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" dl
+          curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@dl/version.json" || true
+          curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@dl/Factor-Saz.apk" || true
+
       - name: Upload AAB (owner only, not public)
         uses: actions/upload-artifact@v4
         with:
