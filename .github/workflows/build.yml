@@ -39,6 +39,23 @@ jobs:
           for w in Regular Medium Bold ExtraBold; do f=$(find x -name "Vazirmatn-$w.woff2" | grep -v -i "variable\|UI\|RD\|FD" | head -1); [ -n "$f" ] && cp "$f" "$V/"; done
           ls -la "$V"
 
+      # فونت‌های فارسی آزاد (OFL) برای فاکتور — فقط فونت‌هایی که حروف فارسی کامل دارند
+      - name: Bundle Persian fonts
+        run: |
+          shopt -s nullglob
+          V="$SRC/app/src/main/assets/vendor"; T="$RUNNER_TEMP/fonts"; mkdir -p "$T" && cd "$T"
+          pip install -q fonttools brotli
+          for p in sahel-font samim-font shabnam-font tanha-font parastoo-font gandom-font nahid-font \
+            @fontsource/lalezar @fontsource/mirza @fontsource/amiri @fontsource/markazi-text @fontsource/reem-kufi \
+            @fontsource/noto-naskh-arabic @fontsource/noto-sans-arabic @fontsource/noto-kufi-arabic @fontsource/ibm-plex-sans-arabic \
+            @fontsource/readex-pro @fontsource/lateef @fontsource/scheherazade-new @fontsource/el-messiri @fontsource/changa \
+            @fontsource/baloo-bhaijaan-2 @fontsource/cairo @fontsource/tajawal @fontsource/almarai @fontsource/mada \
+            @fontsource/harmattan @fontsource/rakkas @fontsource/aref-ruqaa; do npm pack "$p" >/dev/null 2>&1 || echo "no $p"; done
+          for f in *.tgz; do mkdir -p "x/$f" && tar -xzf "$f" -C "x/$f"; done
+          mkdir -p x && python3 "$SRC/tools/fonts.py" "$T/x" "$V" || { echo "window.RS_XFONTS=[];" > "$V/xfonts.js"; : > "$V/xfonts.css"; }
+          rm -rf "$SRC/tools"
+          du -sh "$V/xfonts"
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
