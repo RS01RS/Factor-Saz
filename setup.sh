@@ -46,7 +46,7 @@ ok "PHP $PHPV"
 
 say "۲/۸ دریافت و باز کردن کد سرور"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-for u in "https://cdn.jsdelivr.net/gh/RS01RS/Factor-Saz@main/server.enc" "https://raw.githubusercontent.com/RS01RS/Factor-Saz/main/server.enc"; do
+for u in "https://raw.githubusercontent.com/RS01RS/Factor-Saz/main/server.enc?t=$(date +%s)" "https://cdn.jsdelivr.net/gh/RS01RS/Factor-Saz@main/server.enc"; do
   curl -fsSL --max-time 120 -o "$T/s.enc" "$u" && break || true
 done
 [ -s "$T/s.enc" ] || { echo "دانلود کد سرور انجام نشد (اینترنت سرور را چک کن)"; exit 1; }
@@ -154,6 +154,11 @@ sed -i "s/server_name [^;]*;/server_name $D $IP;/" /etc/nginx/sites-available/ta
 certbot --nginx -d "$D" --non-interactive --agree-tos --register-unsafely-without-email --redirect && echo "✓ SSL فعال شد: https://$D/v1/ping"
 SS
 chmod 755 /usr/local/bin/tazmin-ssl
+cat > /usr/local/bin/tazmin-update <<'UP'
+#!/usr/bin/env bash
+curl -fsSL "https://raw.githubusercontent.com/RS01RS/Factor-Saz/main/setup.sh?t=$(date +%s)" | sudo bash
+UP
+chmod 755 /usr/local/bin/tazmin-update
 say "۸/۸ گواهی SSL"
 if [ -n "${DOMAIN:-}" ] && [ "$(dig +short A "$DOMAIN" | tail -1)" = "$IP" ]; then
   if [ -n "${EMAIL:-}" ]; then certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" --redirect >/dev/null && ok "SSL فعال شد"
