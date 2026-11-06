@@ -1,0 +1,38 @@
+# نسخهٔ ویندوز «تضمین تراز»: یک پنجرهٔ سبک (Tauri + WebView2) که نسخهٔ وب سرور را باز می‌کند
+name: Build Windows
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['desktop/**', '.github/workflows/windows.yml']
+permissions:
+  contents: write
+jobs:
+  win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: desktop/src-tauri }
+      - name: Build installer
+        shell: bash
+        working-directory: desktop
+        run: |
+          V="1.0.${{ github.run_number }}"
+          sed -i "s/\"version\": \"1.0.0\"/\"version\": \"$V\"/" src-tauri/tauri.conf.json
+          npm install --no-audit --no-fund
+          npx tauri icon app-icon.png
+          npx tauri build
+          mkdir -p ../out && cp src-tauri/target/release/bundle/nsis/*-setup.exe ../out/Tazmin-Taraz-Setup.exe
+          ls -la ../out
+      - name: Publish (release "desktop")
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view desktop --repo "${{ github.repository }}" >/dev/null 2>&1 || gh release create desktop --latest=false --title "تضمین تراز — نسخهٔ ویندوز" --notes "نصب‌کنندهٔ ویندوز ۱۰ و ۱۱. فایل Tazmin-Taraz-Setup.exe را دانلود و اجرا کنید." --repo "${{ github.repository }}"
+          gh release upload desktop out/Tazmin-Taraz-Setup.exe --clobber --repo "${{ github.repository }}"
+          gh release edit desktop --latest=false --notes "نسخهٔ ویندوز 1.0.${{ github.run_number }} — نصب‌کنندهٔ ویندوز ۱۰ و ۱۱. فایل Tazmin-Taraz-Setup.exe را دانلود و اجرا کنید." --repo "${{ github.repository }}"
