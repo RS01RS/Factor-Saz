@@ -48,9 +48,15 @@ say "۲/۸ دریافت و باز کردن کد سرور"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 # اگر نسخهٔ مشخصی داده شده (TZ_REF)، از آینهٔ jsDelivr همان نسخه گرفته می‌شود (سریع و بدون کش قدیمی)
 URLS=()
+GHT=$(cat "$APP/tazmin_app/.gh_token" 2>/dev/null || true)
+if [ -n "$GHT" ]; then   # مخزن خصوصی: با توکن فقط‌خواندنی که روی خود سرور ذخیره شده
+  curl -fsSL --retry 4 --connect-timeout 20 --max-time 400 -H "Authorization: Bearer $GHT" -H "Accept: application/vnd.github.raw" \
+    -o "$T/s.enc" "https://api.github.com/repos/RS01RS/Factor-Saz/contents/server.enc?ref=${TZ_REF:-main}" || rm -f "$T/s.enc"
+fi
 [ -n "${TZ_REF:-}" ] && URLS+=("https://cdn.jsdelivr.net/gh/RS01RS/Factor-Saz@${TZ_REF}/server.enc")
 URLS+=("https://raw.githubusercontent.com/RS01RS/Factor-Saz/main/server.enc?t=$(date +%s)" "https://cdn.jsdelivr.net/gh/RS01RS/Factor-Saz@main/server.enc")
 for u in "${URLS[@]}"; do
+  [ -s "$T/s.enc" ] && break
   rm -f "$T/s.enc"
   curl -fsSL --retry 4 --retry-delay 3 --connect-timeout 20 --max-time 400 -o "$T/s.enc" "$u" && [ -s "$T/s.enc" ] && break || warn "دانلود از یک آینه نشد، آینهٔ بعدی…"
 done
@@ -142,9 +148,11 @@ cat > /etc/cron.d/tazmin <<CR
 */5 * * * * www-data php $APP/tazmin_app/cron.php sms >/dev/null 2>&1
 17 * * * * www-data php $APP/tazmin_app/cron.php cleanup >/dev/null 2>&1
 30 3 * * * www-data php $APP/tazmin_app/cron.php nightly >/dev/null 2>&1
+41 * * * * www-data php $APP/tazmin_app/cron.php apk >/dev/null 2>&1
 CR
 chmod 644 /etc/cron.d/tazmin
 ok "cron"
+( sudo -u www-data php "$APP/tazmin_app/cron.php" apk >/dev/null 2>&1 & )   # فایل نصبی برنامه روی سرور (پس‌زمینه)
 
 say "۷/۸ امنیت (فایروال، ضد حدس رمز، به‌روزرسانی خودکار امنیتی)"
 ufw allow OpenSSH >/dev/null; ufw allow 'Nginx Full' >/dev/null; ufw --force enable >/dev/null
@@ -166,9 +174,26 @@ SS
 chmod 755 /usr/local/bin/tazmin-ssl
 cat > /usr/local/bin/tazmin-update <<'UP'
 #!/usr/bin/env bash
-R=$(curl -fsS --max-time 30 https://api.github.com/repos/RS01RS/Factor-Saz/commits/main 2>/dev/null | grep -m1 '"sha"' | cut -d'"' -f4)
-curl -fsSL --retry 4 --max-time 300 "https://cdn.jsdelivr.net/gh/RS01RS/Factor-Saz@${R:-main}/setup.sh" | sudo TZ_REF="$R" bash
+GHT=$(sudo cat /var/www/tazmin/tazmin_app/.gh_token 2>/dev/null); H=(); [ -n "$GHT" ] && H=(-H "Authorization: Bearer $GHT")
+R=$(curl -fsS --max-time 30 "${H[@]}" https://api.github.com/repos/RS01RS/Factor-Saz/commits/main 2>/dev/null | grep -m1 '"sha"' | cut -d'"' -f4)
+if [ -n "$GHT" ]; then curl -fsSL --retry 4 --max-time 300 "${H[@]}" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/RS01RS/Factor-Saz/contents/setup.sh?ref=${R:-main}" | sudo TZ_REF="$R" bash
+else curl -fsSL --retry 4 --max-time 300 "https://cdn.jsdelivr.net/gh/RS01RS/Factor-Saz@${R:-main}/setup.sh" | sudo TZ_REF="$R" bash; fi
 UP
+cat > /usr/local/bin/tazmin-github-token <<'GT'
+#!/usr/bin/env bash
+# توکن فقط‌خواندنی گیت‌هاب (برای وقتی مخزن خصوصی است). روی خود سرور می‌ماند و جایی فرستاده نمی‌شود.
+read -rsp "توکن گیت‌هاب را بچسبان و Enter بزن: " TK; echo
+[ -n "$TK" ] || { echo "خالی بود"; exit 1; }
+F=/var/www/tazmin/tazmin_app/.gh_token; printf '%s' "$TK" | sudo tee "$F" >/dev/null; sudo chown www-data:www-data "$F"; sudo chmod 600 "$F"
+C=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TK" https://api.github.com/repos/RS01RS/Factor-Saz)
+[ "$C" = 200 ] && echo "✓ توکن کار می‌کند" || echo "✗ گیت‌هاب توکن را قبول نکرد (کد $C)"
+GT
+cat > /usr/local/bin/tazmin-apk <<'AP'
+#!/usr/bin/env bash
+# همین حالا آخرین نسخهٔ برنامه را از گیت‌هاب روی سرور بگذار
+sudo -u www-data php /var/www/tazmin/tazmin_app/cron.php apk force
+AP
+chmod 755 /usr/local/bin/tazmin-github-token /usr/local/bin/tazmin-apk
 chmod 755 /usr/local/bin/tazmin-update
 say "۸/۸ گواهی SSL"
 if [ -n "${DOMAIN:-}" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
