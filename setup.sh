@@ -125,6 +125,7 @@ server {
     add_header X-Frame-Options DENY always;
     location ~ /\. { deny all; }
     location /$PANEL/ { try_files \$uri /$PANEL/index.php\$is_args\$args; }
+    location /app/ { index index.html; try_files \$uri \$uri/ =404; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header X-Frame-Options DENY always; }
     location / { try_files \$uri /index.php\$is_args\$args; }
     location ~ \.php\$ {
         include snippets/fastcgi-php.conf;
@@ -152,7 +153,7 @@ cat > /etc/cron.d/tazmin <<CR
 CR
 chmod 644 /etc/cron.d/tazmin
 ok "cron"
-( sudo -u www-data php "$APP/tazmin_app/cron.php" apk >/dev/null 2>&1 & )   # فایل نصبی برنامه روی سرور (پس‌زمینه)
+( runuser -u www-data -- php "$APP/tazmin_app/cron.php" apk >/dev/null 2>&1 & )   # فایل نصبی برنامه روی سرور (پس‌زمینه)
 
 say "۷/۸ امنیت (فایروال، ضد حدس رمز، به‌روزرسانی خودکار امنیتی)"
 ufw allow OpenSSH >/dev/null; ufw allow 'Nginx Full' >/dev/null; ufw --force enable >/dev/null
@@ -191,7 +192,7 @@ GT
 cat > /usr/local/bin/tazmin-apk <<'AP'
 #!/usr/bin/env bash
 # همین حالا آخرین نسخهٔ برنامه را از گیت‌هاب روی سرور بگذار
-sudo -u www-data php /var/www/tazmin/tazmin_app/cron.php apk force
+runuser -u www-data -- php /var/www/tazmin/tazmin_app/cron.php apk force
 AP
 chmod 755 /usr/local/bin/tazmin-github-token /usr/local/bin/tazmin-apk
 chmod 755 /usr/local/bin/tazmin-update

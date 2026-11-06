@@ -86,6 +86,8 @@ jobs:
       - name: Mirror for in-app update
         run: |
           mkdir -p "$RUNNER_TEMP/dl" && cp Factor-Saz.apk "$RUNNER_TEMP/dl/"
+          # نسخهٔ وب: همان صفحه‌ها و فایل‌های برنامه (سرور خودش از اینجا برمی‌دارد)
+          (cd "$SRC/app/src/main/assets" && zip -qr -X "$RUNNER_TEMP/dl/web.zip" .)
           printf '{"tag":"v%s","size":%s}\n' "${{ github.run_number }}" "$(stat -c%s Factor-Saz.apk)" > "$RUNNER_TEMP/dl/version.json"
           cd "$RUNNER_TEMP/dl" && git init -q && git checkout -q -b dl
           git -c user.name=github-actions -c user.email=actions@github.com add . && git -c user.name=github-actions -c user.email=actions@github.com commit -qm "v${{ github.run_number }}"
