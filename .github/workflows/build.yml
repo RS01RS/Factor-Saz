@@ -32,10 +32,11 @@ jobs:
       - name: Bundle offline libraries
         run: |
           V="$SRC/app/src/main/assets/vendor"; T="$RUNNER_TEMP/npm"; mkdir -p "$T" && cd "$T"
-          npm pack html2canvas@1.4.1 jspdf@2.5.1 vazirmatn@33.0.3 >/dev/null
+          npm pack html2canvas@1.4.1 jspdf@2.5.1 vazirmatn@33.0.3 @zxing/library@0.21.3 >/dev/null
           for f in *.tgz; do mkdir -p "x/$f" && tar -xzf "$f" -C "x/$f"; done
           cp "$(find x -path '*html2canvas*' -name html2canvas.min.js | head -1)" "$V/"
           cp "$(find x -path '*jspdf*' -name jspdf.umd.min.js | head -1)" "$V/"
+          cp "$(find x -path '*zxing*' -path '*umd*' -name index.min.js | head -1)" "$V/zxing.min.js"
           for w in Regular Medium Bold ExtraBold; do f=$(find x -name "Vazirmatn-$w.woff2" | grep -v -i "variable\|UI\|RD\|FD" | head -1); [ -n "$f" ] && cp "$f" "$V/"; done
           ls -la "$V"
 
