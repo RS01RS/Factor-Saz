@@ -46,8 +46,13 @@ ok "PHP $PHPV"
 
 say "۲/۸ دریافت و باز کردن کد سرور"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-for u in "https://raw.githubusercontent.com/RS01RS/Factor-Saz/main/server.enc?t=$(date +%s)" "https://cdn.jsdelivr.net/gh/RS01RS/Factor-Saz@main/server.enc"; do
-  curl -fsSL --max-time 120 -o "$T/s.enc" "$u" && break || true
+# اگر نسخهٔ مشخصی داده شده (TZ_REF)، از آینهٔ jsDelivr همان نسخه گرفته می‌شود (سریع و بدون کش قدیمی)
+URLS=()
+[ -n "${TZ_REF:-}" ] && URLS+=("https://cdn.jsdelivr.net/gh/RS01RS/Factor-Saz@${TZ_REF}/server.enc")
+URLS+=("https://raw.githubusercontent.com/RS01RS/Factor-Saz/main/server.enc?t=$(date +%s)" "https://cdn.jsdelivr.net/gh/RS01RS/Factor-Saz@main/server.enc")
+for u in "${URLS[@]}"; do
+  rm -f "$T/s.enc"
+  curl -fsSL --retry 4 --retry-delay 3 --connect-timeout 20 --max-time 400 -o "$T/s.enc" "$u" && [ -s "$T/s.enc" ] && break || warn "دانلود از یک آینه نشد، آینهٔ بعدی…"
 done
 [ -s "$T/s.enc" ] || { echo "دانلود کد سرور انجام نشد (اینترنت سرور را چک کن)"; exit 1; }
 printf '%s' "$SRC_PASS" > "$T/p"; chmod 600 "$T/p"
@@ -160,7 +165,8 @@ SS
 chmod 755 /usr/local/bin/tazmin-ssl
 cat > /usr/local/bin/tazmin-update <<'UP'
 #!/usr/bin/env bash
-curl -fsSL "https://raw.githubusercontent.com/RS01RS/Factor-Saz/main/setup.sh?t=$(date +%s)" | sudo bash
+R=$(curl -fsS --max-time 30 https://api.github.com/repos/RS01RS/Factor-Saz/commits/main 2>/dev/null | grep -m1 '"sha"' | cut -d'"' -f4)
+curl -fsSL --retry 4 --max-time 300 "https://cdn.jsdelivr.net/gh/RS01RS/Factor-Saz@${R:-main}/setup.sh" | sudo TZ_REF="$R" bash
 UP
 chmod 755 /usr/local/bin/tazmin-update
 say "۸/۸ گواهی SSL"
