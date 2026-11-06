@@ -104,6 +104,7 @@ PY
   ok "config.php ساخته شد"
 fi
 chown -R www-data:www-data "$APP"; chmod 750 "$APP/tazmin_app"; chmod 600 "$APP/tazmin_app/config.php"
+[ -d "$APP/tazmin_app/keys" ] && chmod 700 "$APP/tazmin_app/keys" && chmod 600 "$APP/tazmin_app/keys/"*
 runuser -u www-data -- php "$APP/tazmin_app/install.php" migrate
 
 say "۵/۸ وب‌سرور"
