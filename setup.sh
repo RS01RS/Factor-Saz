@@ -182,7 +182,7 @@ fi
 echo; echo "================ بررسی نهایی ================"
 runuser -u www-data -- php "$APP/tazmin_app/install.php" check || true
 echo
-P=$(curl -fsS --max-time 5 "http://127.0.0.1/v1/ping" -H "Host: ${DOMAIN:-localhost}" || echo "جواب نداد")
+if [ -n "${DOMAIN:-}" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then P=$(curl -fsS --max-time 8 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/v1/ping" || echo "جواب نداد"); else P=$(curl -fsS --max-time 5 "http://127.0.0.1/v1/ping" -H "Host: ${DOMAIN:-localhost}" || echo "جواب نداد"); fi
 echo "آزمایش API: $P"
 echo "=============================================="
 ok "نصب تمام شد"
