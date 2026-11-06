@@ -15,7 +15,7 @@ asks(){ local v; read -r -s -p "$1: " v < "$TTY"; echo > "$TTY"; printf '%s' "$v
 grep -qi ubuntu /etc/os-release || warn "این اسکریپت برای Ubuntu نوشته شده"
 
 APP=/var/www/tazmin
-IP=$(curl -fsS4 --max-time 8 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
+IP=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++)if($i=="src")print $(i+1)}' | head -1); [ -n "$IP" ] || IP=$(hostname -I | awk '{print $1}')
 echo "=============================================="
 echo "   نصب سرور تضمین تراز   ·   IP این سرور: $IP"
 echo "=============================================="
@@ -124,6 +124,10 @@ server {
 NG
 ln -sf /etc/nginx/sites-available/tazmin /etc/nginx/sites-enabled/tazmin
 rm -f /etc/nginx/sites-enabled/default
+# گواهی SSL قبلی را دوباره روی تنظیمات تازه می‌نشاند (به‌روزرسانی نباید HTTPS را خراب کند)
+if [ -n "${DOMAIN:-}" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+  certbot install --nginx --cert-name "$DOMAIN" --redirect --non-interactive >/dev/null 2>&1 && ok "SSL حفظ شد" || warn "نصب دوبارهٔ SSL انجام نشد؛ بزن: sudo tazmin-ssl $DOMAIN"
+fi
 nginx -t -q && systemctl reload nginx
 ok "nginx"
 
@@ -148,8 +152,8 @@ cat > /usr/local/bin/tazmin-ssl <<'SS'
 D=$(cat /var/www/tazmin/tazmin_app/.domain 2>/dev/null); [ -n "$1" ] && D="$1"
 [ -n "$D" ] || { echo "استفاده: tazmin-ssl api.tazmintaraz.ir"; exit 1; }
 echo "$D" > /var/www/tazmin/tazmin_app/.domain
-IP=$(curl -fsS4 --max-time 8 https://api.ipify.org); R=$(dig +short A "$D" | tail -1)
-[ "$R" = "$IP" ] || { echo "✗ $D هنوز به $IP اشاره نمی‌کند (الان: ${R:-هیچ}). رکورد A را بساز و چند دقیقه بعد دوباره بزن."; exit 1; }
+IP=$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++)if($i=="src")print $(i+1)}' | head -1); PUB=$(curl -fsS4 --max-time 8 https://api.ipify.org 2>/dev/null); R=$(dig +short A "$D" | tail -1)
+[ "$R" = "$IP" ] || [ "$R" = "$PUB" ] || [ -d "/etc/letsencrypt/live/$D" ] || { echo "✗ $D هنوز به $IP اشاره نمی‌کند (الان: ${R:-هیچ}). رکورد A را بساز و چند دقیقه بعد دوباره بزن."; exit 1; }
 sed -i "s/server_name [^;]*;/server_name $D $IP;/" /etc/nginx/sites-available/tazmin && nginx -t -q && systemctl reload nginx
 certbot --nginx -d "$D" --non-interactive --agree-tos --register-unsafely-without-email --redirect && echo "✓ SSL فعال شد: https://$D/v1/ping"
 SS
@@ -160,7 +164,9 @@ curl -fsSL "https://raw.githubusercontent.com/RS01RS/Factor-Saz/main/setup.sh?t=
 UP
 chmod 755 /usr/local/bin/tazmin-update
 say "۸/۸ گواهی SSL"
-if [ -n "${DOMAIN:-}" ] && [ "$(dig +short A "$DOMAIN" | tail -1)" = "$IP" ]; then
+if [ -n "${DOMAIN:-}" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+  ok "SSL از قبل فعال است"
+elif [ -n "${DOMAIN:-}" ] && [ "$(dig +short A "$DOMAIN" | tail -1)" = "$IP" ]; then
   if [ -n "${EMAIL:-}" ]; then certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL" --redirect >/dev/null && ok "SSL فعال شد"
   else tazmin-ssl "$DOMAIN"; fi
 else
@@ -175,6 +181,5 @@ echo "آزمایش API: $P"
 echo "=============================================="
 ok "نصب تمام شد"
 echo "آدرس API:          https://${DOMAIN:-دامنه}/v1/ping"
-echo "پنل مدیریت (مخفی): https://${DOMAIN:-دامنه}/$PANEL/"
-echo "این آدرس پنل را جایی امن یادداشت کن و در چت نفرست."
+if [ "$UPDATE" = 0 ]; then echo "پنل مدیریت (مخفی): https://${DOMAIN:-دامنه}/$PANEL/"; echo "این آدرس پنل را جایی امن یادداشت کن و در چت نفرست."; else echo "آدرس پنل مدیریت عوض نشده (برای دیدنش: cat $APP/tazmin_app/.panel)"; fi
 echo "مورد «پشتیبان هاست دوم» در بررسی بالا فعلاً ✗ است؛ بعداً تنظیمش می‌کنیم."
