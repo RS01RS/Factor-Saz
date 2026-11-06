@@ -125,7 +125,7 @@ server {
     add_header X-Frame-Options DENY always;
     location ~ /\. { deny all; }
     location /$PANEL/ { try_files \$uri /$PANEL/index.php\$is_args\$args; }
-    location /app/ { index index.html; try_files \$uri \$uri/ =404; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header X-Frame-Options DENY always; }
+    location /app/ { index index.html; try_files \$uri \$uri/ /index.php\$is_args\$args; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header X-Frame-Options DENY always; }
     location / { try_files \$uri /index.php\$is_args\$args; }
     location ~ \.php\$ {
         include snippets/fastcgi-php.conf;
