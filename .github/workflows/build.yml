@@ -76,6 +76,8 @@ jobs:
         run: |
           cp "$SRC/app/build/outputs/apk/release/app-release.apk" Factor-Saz.apk
           cp "$SRC/app/build/outputs/bundle/release/app-release.aab" Factor-Saz-play.aab
+          # نسخهٔ وب: همان صفحه‌ها و فایل‌های برنامه (سرور خودش از شاخهٔ dl برمی‌دارد)
+          (cd "$SRC/app/src/main/assets" && zip -qr -X "$RUNNER_TEMP/web.zip" .)
           rm -rf "$SRC"
           gh release create "v${{ github.run_number }}" Factor-Saz.apk \
             --title "تضمین تراز v${{ github.run_number }}" \
@@ -86,8 +88,7 @@ jobs:
       - name: Mirror for in-app update
         run: |
           mkdir -p "$RUNNER_TEMP/dl" && cp Factor-Saz.apk "$RUNNER_TEMP/dl/"
-          # نسخهٔ وب: همان صفحه‌ها و فایل‌های برنامه (سرور خودش از اینجا برمی‌دارد)
-          (cd "$SRC/app/src/main/assets" && zip -qr -X "$RUNNER_TEMP/dl/web.zip" .)
+          cp "$RUNNER_TEMP/web.zip" "$RUNNER_TEMP/dl/"
           printf '{"tag":"v%s","size":%s}\n' "${{ github.run_number }}" "$(stat -c%s Factor-Saz.apk)" > "$RUNNER_TEMP/dl/version.json"
           cd "$RUNNER_TEMP/dl" && git init -q && git checkout -q -b dl
           git -c user.name=github-actions -c user.email=actions@github.com add . && git -c user.name=github-actions -c user.email=actions@github.com commit -qm "v${{ github.run_number }}"
