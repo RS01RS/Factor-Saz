@@ -36,3 +36,12 @@ jobs:
           gh release view desktop --repo "${{ github.repository }}" >/dev/null 2>&1 || gh release create desktop --latest=false --title "تضمین تراز — نسخهٔ ویندوز" --notes "نصب‌کنندهٔ ویندوز ۱۰ و ۱۱. فایل Tazmin-Taraz-Setup.exe را دانلود و اجرا کنید." --repo "${{ github.repository }}"
           gh release upload desktop out/Tazmin-Taraz-Setup.exe --clobber --repo "${{ github.repository }}"
           gh release edit desktop --latest=false --notes "نسخهٔ ویندوز 1.0.${{ github.run_number }} — نصب‌کنندهٔ ویندوز ۱۰ و ۱۱. فایل Tazmin-Taraz-Setup.exe را دانلود و اجرا کنید." --repo "${{ github.repository }}"
+      - name: Mirror to branch "win" (for jsDelivr / raw, reachable from Iran)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/w" && cp out/Tazmin-Taraz-Setup.exe "$RUNNER_TEMP/w/"
+          SHA=$(sha256sum out/Tazmin-Taraz-Setup.exe | cut -d' ' -f1); SIZE=$(stat -c %s out/Tazmin-Taraz-Setup.exe)
+          printf '{"ver":"1.0.%s","size":%s,"sha256":"%s"}' "${{ github.run_number }}" "$SIZE" "$SHA" > "$RUNNER_TEMP/w/win.json"
+          cd "$RUNNER_TEMP/w" && git init -q -b win && git add -A
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "win 1.0.${{ github.run_number }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" win
