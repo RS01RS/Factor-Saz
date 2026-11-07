@@ -256,6 +256,76 @@ PY
 echo "حالا در پنل مدیریت ← پیامک‌ها ← «ارسال یادآوری آزمایشی» را بزن."
 ST
 chmod 755 /usr/local/bin/tazmin-sms-template
+cat > /usr/local/bin/tazmin-admin-pass <<'APW'
+#!/usr/bin/env bash
+# عوض کردن رمز، نام کاربری یا شمارهٔ مدیر پنل (روی خود سرور)
+CF=/var/www/tazmin/tazmin_app/config.php
+[ -f "$CF" ] || { echo "config.php پیدا نشد"; exit 1; }
+U=$(sudo php -r '$c=require "'"$CF"'"; echo $c["admin"]["user"]??"admin";'); PH=$(sudo php -r '$c=require "'"$CF"'"; echo $c["admin"]["phone"]??"";')
+echo "نام کاربری فعلی: $U   ·   شمارهٔ مدیر: $PH"
+read -rp "نام کاربری جدید (Enter = بدون تغییر): " NU
+read -rp "شمارهٔ موبایل مدیر جدید (Enter = بدون تغییر): " NP
+while :; do read -rsp "رمز جدید پنل (حداقل ۱۲ کاراکتر؛ Enter = بدون تغییر): " P1; echo; [ -z "$P1" ] && break; read -rsp "تکرار رمز: " P2; echo; [ "$P1" = "$P2" ] && [ ${#P1} -ge 12 ] && break; echo "یکسان نبود یا کوتاه بود؛ دوباره."; done
+H=""; [ -n "$P1" ] && H=$(P="$P1" php -r 'echo password_hash(getenv("P"), defined("PASSWORD_ARGON2ID")?PASSWORD_ARGON2ID:PASSWORD_BCRYPT);')
+sudo NU="$NU" NP="$NP" H="$H" python3 - "$CF" <<'PY'
+import os,re,sys
+p=sys.argv[1];s=open(p,encoding='utf-8').read()
+def setk(s,k,v):
+    return re.sub(r"('"+k+r"'\s*=>\s*)'[^']*'",lambda m:m.group(1)+"'"+v.replace("'","")+"'",s,count=1)
+a=s.find("'admin'");head,tail=s[:a],s[a:]
+if os.environ.get('NU'):tail=setk(tail,'user',os.environ['NU'])
+if os.environ.get('NP'):tail=setk(tail,'phone',os.environ['NP'])
+if os.environ.get('H'):tail=setk(tail,'pass_hash',os.environ['H'])
+open(p,'w',encoding='utf-8').write(head+tail);print('✓ ذخیره شد')
+PY
+unset P1 P2 H
+APW
+cat > /usr/local/bin/tazmin-info <<'INF'
+#!/usr/bin/env bash
+# خلاصهٔ وضعیت سرور؛ با --secrets رمزها و کلیدها را هم (فقط روی همین سرور) نشان می‌دهد
+APP=/var/www/tazmin; CF=$APP/tazmin_app/config.php
+D=$(cat $APP/tazmin_app/.domain 2>/dev/null); P=$(sudo cat $APP/tazmin_app/.panel 2>/dev/null)
+echo "================ تضمین تراز ================"
+echo "دامنهٔ اصلی:        ${D:-—}"
+echo "دامنه‌های اضافه:    $(cat $APP/tazmin_app/.domains 2>/dev/null | tr '\n' ' ')"
+echo "آدرس پنل مدیریت:    https://${D}/${P}/"
+sudo php -r '$c=require "'"$CF"'";
+ echo "نام کاربری پنل:     ".($c["admin"]["user"]??"")."\n";
+ echo "شمارهٔ مدیر:         ".($c["admin"]["phone"]??"")."\n";
+ echo "دیتابیس:            ".($c["db"]["dsn"]??"")."  کاربر: ".($c["db"]["user"]??"")."\n";
+ echo "سامانهٔ پیامک:       ".($c["sms"]["provider"]??"")."  الگوی ورود: ".($c["sms"]["template"]??"")."  الگوی یادآوری: ".(($c["sms"]["reminder_template"]??"")?:"(خالی)")."\n";
+ echo "اجرای پلن‌ها:        ".(!empty($c["enforce_plans"])?"روشن":"خاموش (همه چیز باز)")."\n";
+ if (in_array("--secrets",$argv)) { echo "\n------ محرمانه (در چت یا جای عمومی نفرست) ------\n";
+   echo "رمز دیتابیس:        ".($c["db"]["pass"]??"")."\n"; echo "کلید API پیامک:     ".($c["sms"]["api_key"]??"")."\n";
+   echo "secret:             ".($c["secret"]??"")."\nmaster_key:         ".($c["master_key"]??"")."\n";
+   echo "offsite key:        ".($c["offsite"]["key"]??"")."\noffsite token:      ".($c["offsite"]["token"]??"")."\n";
+   echo "(رمز پنل به‌صورت هش ذخیره است و قابل نمایش نیست؛ برای عوض کردنش: sudo tazmin-admin-pass)\n"; }' -- "$@"
+echo "--------------------------------------------"
+echo "نسخهٔ برنامه روی سرور: $(curl -s -m 8 https://${D}/v1/app/latest | grep -o '"tag":"[^"]*"' | head -1)"
+CL=$(cat $APP/tazmin_app/storage/sms_cron 2>/dev/null); [ -n "$CL" ] && echo "آخرین اجرای ارسال پیامک: $(( ( $(date +%s) - CL ) / 60 )) دقیقه پیش" || echo "آخرین اجرای ارسال پیامک: هرگز"
+echo "nginx: $(systemctl is-active nginx)   php-fpm: $(systemctl is-active 'php*-fpm' 2>/dev/null | head -1)   mysql: $(systemctl is-active mysql 2>/dev/null || systemctl is-active mariadb)"
+echo "فضای دیسک: $(df -h / | awk 'NR==2{print $4" آزاد از "$2}')"
+INF
+cat > /usr/local/bin/tazmin-check <<'CHK'
+#!/usr/bin/env bash
+# عیب‌یابی سریع همهٔ بخش‌ها
+APP=/var/www/tazmin; D=$(cat $APP/tazmin_app/.domain 2>/dev/null); P=$(sudo cat $APP/tazmin_app/.panel 2>/dev/null)
+echo "== بررسی تنظیمات برنامه =="; sudo runuser -u www-data -- php $APP/tazmin_app/install.php check
+echo "== وب‌سرور =="; sudo nginx -t 2>&1 | tail -1
+for s in nginx mysql mariadb; do systemctl list-unit-files | grep -q "^$s" && echo "$s: $(systemctl is-active $s)"; done
+echo "php-fpm: $(systemctl is-active $(systemctl list-units --type=service --all | grep -o 'php[0-9.]*-fpm' | head -1))"
+echo "== آزمایش آدرس‌ها =="
+for u in "https://$D/v1/ping" "https://$D/v1/app/latest" "https://$D/app/" "https://$D/$P/"; do printf '%s  ' "$(curl -s -o /dev/null -m 12 -w '%{http_code}' "$u")"; echo "$u" | sed "s#$P#<پنل>#"; done
+echo "== گواهی SSL =="; echo | openssl s_client -servername "$D" -connect "$D:443" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null || echo "خوانده نشد"
+echo "== دسترسی به گیت‌هاب (برای به‌روزرسانی) =="; for u in https://api.github.com https://raw.githubusercontent.com https://cdn.jsdelivr.net; do echo "$(curl -s -o /dev/null -m 12 -w '%{http_code}' $u)  $u"; done
+echo "== آخرین خطاهای وب‌سرور و PHP =="; sudo tail -n 8 /var/log/nginx/error.log 2>/dev/null; sudo sh -c 'tail -n 8 /var/log/php*-fpm.log' 2>/dev/null
+CHK
+cat > /usr/local/bin/tazmin-logs <<'LG'
+#!/usr/bin/env bash
+# نمایش زندهٔ خطاها (Ctrl+C برای خروج)
+sudo sh -c 'tail -f /var/log/nginx/error.log /var/log/php*-fpm.log'
+LG
+chmod 755 /usr/local/bin/tazmin-admin-pass /usr/local/bin/tazmin-info /usr/local/bin/tazmin-check /usr/local/bin/tazmin-logs
 chmod 755 /usr/local/bin/tazmin-github-token /usr/local/bin/tazmin-apk
 chmod 755 /usr/local/bin/tazmin-update
 say "۸/۸ گواهی SSL"
