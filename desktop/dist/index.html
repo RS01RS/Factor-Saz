@@ -1,4 +1,6 @@
 <!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>تضمین تراز</title>
 <style>body{font-family:Tahoma,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f3f6f8;color:#123}div{text-align:center}button{font:inherit;padding:10px 22px;border:0;border-radius:10px;background:#0f7f78;color:#fff;cursor:pointer}</style></head>
 <body><div><h2>تضمین تراز</h2><p>در حال اتصال به سرور…</p><p id="m" style="color:#a33"></p><button onclick="go()">تلاش دوباره</button></div>
-<script>const U='https://taraz.tazminnet.ir/app/?desktop=1';function go(){document.getElementById('m').textContent='';fetch('https://taraz.tazminnet.ir/v1/ping?t='+Date.now(),{mode:'no-cors',cache:'no-store'}).then(()=>location.replace(U)).catch(()=>{document.getElementById('m').textContent='اتصال برقرار نشد. اینترنت را بررسی کن و دوباره امتحان کن.'})}go();</script></body></html>
+<script>const H=['app.tazmintaraz.ir','app.taraztazmin.ir','app.tazminhesabdari.ir','taraz.tazminnet.ir'];
+async function go(){document.getElementById('m').textContent='';for(const h of H){try{await Promise.race([fetch('https://'+h+'/v1/ping?t='+Date.now(),{mode:'no-cors',cache:'no-store'}),new Promise((_,r)=>setTimeout(r,8000))]);location.replace('https://'+h+'/app/?desktop=1');return}catch(e){}}
+ document.getElementById('m').textContent='اتصال برقرار نشد. اینترنت را بررسی کن و دوباره امتحان کن.'}go();</script></body></html>
