@@ -235,6 +235,27 @@ cat > /usr/local/bin/tazmin-apk <<'AP'
 # همین حالا آخرین نسخهٔ برنامه را از گیت‌هاب روی سرور بگذار
 runuser -u www-data -- php /var/www/tazmin/tazmin_app/cron.php apk force
 AP
+cat > /usr/local/bin/tazmin-sms-template <<'ST'
+#!/usr/bin/env bash
+# نام قالب (الگوی) پیامک یادآوری مشتری در کاوه‌نگار را روی سرور ثبت می‌کند
+CF=/var/www/tazmin/tazmin_app/config.php
+[ -f "$CF" ] || { echo "config.php پیدا نشد"; exit 1; }
+CUR=$(sudo php -r '$c=require "'"$CF"'"; echo $c["sms"]["reminder_template"]??"";' 2>/dev/null)
+echo "قالب فعلی یادآوری: ${CUR:-(خالی)}"
+read -rp "نام قالب یادآوری در کاوه‌نگار را بنویس و Enter بزن: " T
+T=$(printf '%s' "$T" | tr -cd 'A-Za-z0-9_-')
+[ -n "$T" ] || { echo "خالی بود؛ چیزی عوض نشد"; exit 1; }
+sudo python3 - "$CF" "$T" <<'PY'
+import re,sys
+p,t=sys.argv[1],sys.argv[2];s=open(p,encoding='utf-8').read()
+s2,n=re.subn(r"('reminder_template'\s*=>\s*)'[^']*'",lambda m:m.group(1)+"'"+t+"'",s,count=1)
+if not n:
+    s2,n=re.subn(r"('template'\s*=>\s*'[^']*',)",lambda m:m.group(1)+"\n        'reminder_template' => '"+t+"',",s,count=1)
+open(p,'w',encoding='utf-8').write(s2);print('✓ ذخیره شد' if n else '✗ جای قالب در config.php پیدا نشد')
+PY
+echo "حالا در پنل مدیریت ← پیامک‌ها ← «ارسال یادآوری آزمایشی» را بزن."
+ST
+chmod 755 /usr/local/bin/tazmin-sms-template
 chmod 755 /usr/local/bin/tazmin-github-token /usr/local/bin/tazmin-apk
 chmod 755 /usr/local/bin/tazmin-update
 say "۸/۸ گواهی SSL"
