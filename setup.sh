@@ -114,10 +114,8 @@ chown -R www-data:www-data "$APP"; chmod 750 "$APP/tazmin_app"; chmod 600 "$APP/
 runuser -u www-data -- php "$APP/tazmin_app/install.php" migrate
 
 say "۵/۸ وب‌سرور"
-cat > /etc/nginx/sites-available/tazmin <<NG
-server {
-    listen 80; listen [::]:80;
-    server_name ${DOMAIN:-_} $IP;
+# بدنهٔ مشترک (برای دامنهٔ اصلی و دامنه‌های اضافه)
+cat > /etc/nginx/snippets/tazmin-body.conf <<NG
     root $APP/public_api; index index.php;
     client_max_body_size 30m;
     server_tokens off;
@@ -133,13 +131,33 @@ server {
         fastcgi_param HTTP_AUTHORIZATION \$http_authorization;
         fastcgi_read_timeout 120;
     }
+NG
+cat > /etc/nginx/sites-available/tazmin <<NG
+server {
+    listen 80; listen [::]:80;
+    server_name ${DOMAIN:-_} $IP;
+    include snippets/tazmin-body.conf;
 }
 NG
+EXTRA=$(cat "$APP/tazmin_app/.domains" 2>/dev/null | tr -s ' \n' ' ' | sed 's/^ *//;s/ *$//')
+if [ -n "$EXTRA" ]; then
+cat > /etc/nginx/sites-available/tazmin-extra <<NG
+server {
+    listen 80; listen [::]:80;
+    server_name $EXTRA;
+    include snippets/tazmin-body.conf;
+}
+NG
+ln -sf /etc/nginx/sites-available/tazmin-extra /etc/nginx/sites-enabled/tazmin-extra
+fi
 ln -sf /etc/nginx/sites-available/tazmin /etc/nginx/sites-enabled/tazmin
 rm -f /etc/nginx/sites-enabled/default
 # گواهی SSL قبلی را دوباره روی تنظیمات تازه می‌نشاند (به‌روزرسانی نباید HTTPS را خراب کند)
 if [ -n "${DOMAIN:-}" ] && [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
   certbot install --nginx --cert-name "$DOMAIN" --redirect --non-interactive >/dev/null 2>&1 && ok "SSL حفظ شد" || warn "نصب دوبارهٔ SSL انجام نشد؛ بزن: sudo tazmin-ssl $DOMAIN"
+fi
+if [ -n "${EXTRA:-}" ] && [ -d /etc/letsencrypt/live/tazmin-extra ]; then
+  certbot install --nginx --cert-name tazmin-extra --redirect --non-interactive >/dev/null 2>&1 && ok "SSL دامنه‌های اضافه حفظ شد" || warn "SSL دامنه‌های اضافه: بزن sudo tazmin-domains"
 fi
 nginx -t -q && systemctl reload nginx
 ok "nginx"
@@ -173,6 +191,26 @@ sed -i "s/server_name [^;]*;/server_name $D $IP;/" /etc/nginx/sites-available/ta
 certbot --nginx -d "$D" --non-interactive --agree-tos --register-unsafely-without-email --redirect && echo "✓ SSL فعال شد: https://$D/v1/ping"
 SS
 chmod 755 /usr/local/bin/tazmin-ssl
+cat > /usr/local/bin/tazmin-domains <<'DM'
+#!/usr/bin/env bash
+# دامنه‌های اضافه (مثلاً دامنهٔ جدید برند) کنار دامنهٔ فعلی؛ هر دو همزمان کار می‌کنند
+# استفاده: sudo tazmin-domains api.tazmintaraz.ir app.tazmintaraz.ir tazmintaraz.ir www.tazmintaraz.ir
+F=/var/www/tazmin/tazmin_app/.domains
+IP=$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++)if($i=="src")print $(i+1)}' | head -1); PUB=$(curl -fsS4 --max-time 8 https://api.ipify.org 2>/dev/null)
+L=$(cat "$F" 2>/dev/null)
+for d in "$@"; do d=$(echo "$d" | tr 'A-Z' 'a-z'); echo "$d" | grep -Eq '^[a-z0-9.-]+\.[a-z]{2,}$' || { echo "✗ نامعتبر: $d"; continue; }; L="$L $d"; done
+OK=""; for d in $(echo $L | tr ' ' '\n' | sort -u); do R=$(dig +short A "$d" | tail -1)
+  if [ "$R" = "$IP" ] || [ "$R" = "$PUB" ]; then OK="$OK $d"; echo "✓ $d"; else echo "✗ $d هنوز به این سرور اشاره نمی‌کند (الان: ${R:-هیچ})"; fi; done
+OK=$(echo $OK); [ -n "$OK" ] || { echo "هیچ دامنهٔ آماده‌ای نیست. رکورد A بساز و چند دقیقه بعد دوباره بزن."; exit 1; }
+echo "$OK" > "$F"
+printf 'server {\n    listen 80; listen [::]:80;\n    server_name %s;\n    include snippets/tazmin-body.conf;\n}\n' "$OK" > /etc/nginx/sites-available/tazmin-extra
+ln -sf /etc/nginx/sites-available/tazmin-extra /etc/nginx/sites-enabled/tazmin-extra
+nginx -t -q && systemctl reload nginx || { echo "✗ خطای nginx"; exit 1; }
+A=(); for d in $OK; do A+=(-d "$d"); done
+certbot --nginx --cert-name tazmin-extra --expand "${A[@]}" --non-interactive --agree-tos --register-unsafely-without-email --redirect >/dev/null 2>&1 \
+  && { echo "✓ SSL فعال شد:"; for d in $OK; do echo "   https://$d"; done; } || echo "✗ گرفتن SSL نشد. چند دقیقه بعد دوباره بزن: sudo tazmin-domains"
+DM
+chmod 755 /usr/local/bin/tazmin-domains
 cat > /usr/local/bin/tazmin-update <<'UP'
 #!/usr/bin/env bash
 GHT=$(sudo cat /var/www/tazmin/tazmin_app/.gh_token 2>/dev/null); H=(); [ -n "$GHT" ] && H=(-H "Authorization: Bearer $GHT")
