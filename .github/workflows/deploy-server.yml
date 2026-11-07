@@ -1,0 +1,31 @@
+# کد سرور و نصب‌کننده را مستقیم به سرور می‌فرستد تا اگر سرور به گیت‌هاب نرسید، tazmin-update از همین نسخه استفاده کند
+name: Push server code
+on:
+  push:
+    branches: [main]
+    paths: ['server.enc', 'setup.sh', '.github/workflows/deploy-server.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push to server
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          deploy() { # $1=kind $2=tag $3=file
+            [ -n "$DEPLOY_KEY" ] || { echo "DEPLOY_KEY not set — skipping direct push"; return 0; }
+            SHA=$(sha256sum "$3" | cut -d' ' -f1); TS=$(date +%s)
+            SIG=$(printf '%s' "$1|$2|$SHA|$TS" | openssl dgst -sha256 -hmac "$DEPLOY_KEY" -r | cut -d' ' -f1)
+            for B in https://api.tazmintaraz.ir https://api.tazminhesabdari.ir; do
+              if curl -fsS --retry 2 --connect-timeout 20 --max-time 600 -X PUT --data-binary @"$3" \
+                -H "Content-Type: application/octet-stream" -H "X-TT-Client: deploy/L2" -H "X-Kind: $1" -H "X-Tag: $2" \
+                -H "X-Sha256: $SHA" -H "X-Ts: $TS" -H "X-Sig: $SIG" "$B/v1/deploy"; then echo; echo "pushed $1 to $B"; return 0; fi
+            done
+            echo "::warning::direct push of $1 failed (server will still pull from GitHub)"; return 0
+          }
+          deploy server "${GITHUB_SHA::12}" server.enc
+          deploy setup "${GITHUB_SHA::12}" setup.sh

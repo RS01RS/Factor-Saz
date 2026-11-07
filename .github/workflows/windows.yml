@@ -45,3 +45,20 @@ jobs:
           cd "$RUNNER_TEMP/w" && git init -q -b win && git add -A
           git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "win 1.0.${{ github.run_number }}"
           git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" win
+      - name: Push directly to server
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          deploy() { # $1=kind $2=tag $3=file
+            [ -n "$DEPLOY_KEY" ] || { echo "DEPLOY_KEY not set — skipping direct push"; return 0; }
+            SHA=$(sha256sum "$3" | cut -d' ' -f1); TS=$(date +%s)
+            SIG=$(printf '%s' "$1|$2|$SHA|$TS" | openssl dgst -sha256 -hmac "$DEPLOY_KEY" -r | cut -d' ' -f1)
+            for B in https://api.tazmintaraz.ir https://api.tazminhesabdari.ir; do
+              if curl -fsS --retry 2 --connect-timeout 20 --max-time 600 -X PUT --data-binary @"$3" \
+                -H "Content-Type: application/octet-stream" -H "X-TT-Client: deploy/L2" -H "X-Kind: $1" -H "X-Tag: $2" \
+                -H "X-Sha256: $SHA" -H "X-Ts: $TS" -H "X-Sig: $SIG" "$B/v1/deploy"; then echo; echo "pushed $1 to $B"; return 0; fi
+            done
+            echo "::warning::direct push of $1 failed (server will still pull from GitHub)"; return 0
+          }
+          deploy win "1.0.${{ github.run_number }}" out/Tazmin-Taraz-Setup.exe

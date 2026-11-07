@@ -60,6 +60,7 @@ for u in "${URLS[@]}"; do
   rm -f "$T/s.enc"
   curl -fsSL --retry 4 --retry-delay 3 --connect-timeout 20 --max-time 400 -o "$T/s.enc" "$u" && [ -s "$T/s.enc" ] && break || warn "دانلود از یک آینه نشد، آینهٔ بعدی…"
 done
+if [ ! -s "$T/s.enc" ] && [ -s "$APP/tazmin_app/storage/push/server.enc" ]; then cp "$APP/tazmin_app/storage/push/server.enc" "$T/s.enc"; warn "گیت‌هاب در دسترس نبود؛ کد سرور از نسخهٔ ارسال‌شده به خود سرور برداشته شد"; fi
 [ -s "$T/s.enc" ] || { echo "دانلود کد سرور انجام نشد (اینترنت سرور را چک کن)"; exit 1; }
 printf '%s' "$SRC_PASS" > "$T/p"; chmod 600 "$T/p"
 openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in "$T/s.enc" -out "$T/s.zip" -pass file:"$T/p" 2>/dev/null || { echo "رمز سورس اشتباه است"; exit 1; }
@@ -216,10 +217,18 @@ DM
 chmod 755 /usr/local/bin/tazmin-domains
 cat > /usr/local/bin/tazmin-update <<'UP'
 #!/usr/bin/env bash
+# به‌روزرسانی سرور: اول از گیت‌هاب؛ اگر نشد، از نسخه‌ای که GitHub Actions مستقیم به خود سرور فرستاده (storage/push)
+PUSH=/var/www/tazmin/tazmin_app/storage/push
 GHT=$(sudo cat /var/www/tazmin/tazmin_app/.gh_token 2>/dev/null); H=(); [ -n "$GHT" ] && H=(-H "Authorization: Bearer $GHT")
 R=$(curl -fsS --max-time 30 "${H[@]}" https://api.github.com/repos/RS01RS/Factor-Saz/commits/main 2>/dev/null | grep -m1 '"sha"' | cut -d'"' -f4)
-if [ -n "$GHT" ]; then curl -fsSL --retry 4 --max-time 300 "${H[@]}" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/RS01RS/Factor-Saz/contents/setup.sh?ref=${R:-main}" | sudo TZ_REF="$R" bash
-else curl -fsSL --retry 4 --max-time 300 "https://cdn.jsdelivr.net/gh/RS01RS/Factor-Saz@${R:-main}/setup.sh" | sudo TZ_REF="$R" bash; fi
+T=$(mktemp)
+if [ -n "$GHT" ]; then curl -fsSL --retry 4 --max-time 300 "${H[@]}" -H "Accept: application/vnd.github.raw" -o "$T" "https://api.github.com/repos/RS01RS/Factor-Saz/contents/setup.sh?ref=${R:-main}" || : > "$T"; fi
+[ -s "$T" ] || curl -fsSL --retry 3 --max-time 300 -o "$T" "https://cdn.jsdelivr.net/gh/RS01RS/Factor-Saz@${R:-main}/setup.sh" || : > "$T"
+if ! head -1 "$T" | grep -q '^#!'; then
+  if sudo test -s "$PUSH/setup.sh"; then echo "↪ گیت‌هاب در دسترس نبود؛ از نسخهٔ ارسال‌شده به خود سرور استفاده می‌شود"; sudo cp "$PUSH/setup.sh" "$T"; R=""
+  else echo "دانلود نصب‌کننده نشد (اینترنت بین‌المللی سرور). چند دقیقه بعد دوباره بزن."; rm -f "$T"; exit 1; fi
+fi
+sudo TZ_REF="$R" bash "$T"; rc=$?; rm -f "$T"; exit $rc
 UP
 cat > /usr/local/bin/tazmin-github-token <<'GT'
 #!/usr/bin/env bash
@@ -326,6 +335,22 @@ cat > /usr/local/bin/tazmin-logs <<'LG'
 sudo sh -c 'tail -f /var/log/nginx/error.log /var/log/php*-fpm.log'
 LG
 chmod 755 /usr/local/bin/tazmin-admin-pass /usr/local/bin/tazmin-info /usr/local/bin/tazmin-check /usr/local/bin/tazmin-logs
+cat > /usr/local/bin/tazmin-deploy-key <<'DK'
+#!/usr/bin/env bash
+# کلید «مسیر دوم به‌روزرسانی»: GitHub Actions فایل‌ها را مستقیم به همین سرور می‌فرستد (وقتی سرور به گیت‌هاب نمی‌رسد)
+K=$(sudo runuser -u www-data -- php -r 'require "/var/www/tazmin/tazmin_app/bootstrap.php"; $k=bin2hex(random_bytes(32)); setting_set("deploy_key",$k); echo $k;')
+[ ${#K} -eq 64 ] || { echo "ساخت کلید نشد"; exit 1; }
+echo
+echo "کلید ساخته شد. حالا در گیت‌هاب:"
+echo "  مخزن Factor-Saz ← Settings ← Secrets and variables ← Actions ← New repository secret"
+echo "  Name:   DEPLOY_KEY"
+echo "  Secret: (خط زیر را کامل کپی کن)"
+echo
+echo "$K"
+echo
+echo "این کلید را در چت یا جای دیگری نفرست؛ فقط در گیت‌هاب بگذار. با اجرای دوبارهٔ همین دستور، کلید قبلی باطل می‌شود."
+DK
+chmod 755 /usr/local/bin/tazmin-deploy-key
 chmod 755 /usr/local/bin/tazmin-github-token /usr/local/bin/tazmin-apk
 chmod 755 /usr/local/bin/tazmin-update
 say "۸/۸ گواهی SSL"
