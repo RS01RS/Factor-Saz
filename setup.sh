@@ -114,6 +114,8 @@ chown -R www-data:www-data "$APP"; chmod 750 "$APP/tazmin_app"; chmod 600 "$APP/
 runuser -u www-data -- php "$APP/tazmin_app/install.php" migrate
 
 say "۵/۸ وب‌سرور"
+# تنظیمات قدیمی که به گواهی حذف‌شده اشاره می‌کنند، از نو ساخته می‌شوند
+[ -n "${EXTRA_KEEP:-}" ] || rm -f /etc/nginx/sites-enabled/tazmin-extra
 # بدنهٔ مشترک (برای دامنهٔ اصلی و دامنه‌های اضافه)
 cat > /etc/nginx/snippets/tazmin-body.conf <<NG
     root $APP/public_api; index index.php;
@@ -139,7 +141,7 @@ server {
     include snippets/tazmin-body.conf;
 }
 NG
-EXTRA=$( { cat "$APP/tazmin_app/.domains" 2>/dev/null || true; } | tr -s ' \n' ' ' | sed 's/^ *//;s/ *$//' || true)
+EXTRA=$( { cat "$APP/tazmin_app/.domains" 2>/dev/null || true; } | tr -s ' \n' '\n' | grep -vx "${DOMAIN:-__none__}" | tr '\n' ' ' | sed 's/^ *//;s/ *$//' || true)
 if [ -n "$EXTRA" ]; then
 cat > /etc/nginx/sites-available/tazmin-extra <<NG
 server {
@@ -199,7 +201,8 @@ F=/var/www/tazmin/tazmin_app/.domains
 IP=$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++)if($i=="src")print $(i+1)}' | head -1); PUB=$(curl -fsS4 --max-time 8 https://api.ipify.org 2>/dev/null)
 L=$(cat "$F" 2>/dev/null || true)
 for d in "$@"; do d=$(echo "$d" | tr 'A-Z' 'a-z'); echo "$d" | grep -Eq '^[a-z0-9.-]+\.[a-z]{2,}$' || { echo "✗ نامعتبر: $d"; continue; }; L="$L $d"; done
-OK=""; for d in $(echo $L | tr ' ' '\n' | sort -u); do R=$(dig +short A "$d" | tail -1)
+MAIN=$(cat /var/www/tazmin/tazmin_app/.domain 2>/dev/null || true)
+OK=""; for d in $(echo $L | tr ' ' '\n' | sort -u); do [ "$d" = "$MAIN" ] && continue; R=$(dig +short A "$d" | tail -1)
   if [ "$R" = "$IP" ] || [ "$R" = "$PUB" ]; then OK="$OK $d"; echo "✓ $d"; else echo "✗ $d هنوز به این سرور اشاره نمی‌کند (الان: ${R:-هیچ})"; fi; done
 OK=$(echo $OK); [ -n "$OK" ] || { echo "هیچ دامنهٔ آماده‌ای نیست. رکورد A بساز و چند دقیقه بعد دوباره بزن."; exit 1; }
 echo "$OK" > "$F"
