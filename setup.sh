@@ -186,11 +186,11 @@ cat > /usr/local/bin/tazmin-ssl <<'SS'
 #!/usr/bin/env bash
 D=$(cat /var/www/tazmin/tazmin_app/.domain 2>/dev/null); [ -n "$1" ] && D="$1"
 [ -n "$D" ] || { echo "استفاده: tazmin-ssl api.tazmintaraz.ir"; exit 1; }
-echo "$D" > /var/www/tazmin/tazmin_app/.domain
+echo "$D" | grep -Eq '^[a-z0-9.-]+\.[a-z]{2,}$' || { echo "✗ نام دامنه نامعتبر: $D"; exit 1; }
 IP=$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++)if($i=="src")print $(i+1)}' | head -1); PUB=$(curl -fsS4 --max-time 8 https://api.ipify.org 2>/dev/null); R=$(dig +short A "$D" | tail -1)
 [ "$R" = "$IP" ] || [ "$R" = "$PUB" ] || [ -d "/etc/letsencrypt/live/$D" ] || { echo "✗ $D هنوز به $IP اشاره نمی‌کند (الان: ${R:-هیچ}). رکورد A را بساز و چند دقیقه بعد دوباره بزن."; exit 1; }
 sed -i "s/server_name [^;]*;/server_name $D $IP;/" /etc/nginx/sites-available/tazmin && nginx -t -q && systemctl reload nginx
-certbot --nginx -d "$D" --non-interactive --agree-tos --register-unsafely-without-email --redirect && echo "✓ SSL فعال شد: https://$D/v1/ping"
+certbot --nginx -d "$D" --non-interactive --agree-tos --register-unsafely-without-email --redirect && echo "$D" > /var/www/tazmin/tazmin_app/.domain && echo "✓ SSL فعال شد: https://$D/v1/ping"
 SS
 chmod 755 /usr/local/bin/tazmin-ssl
 cat > /usr/local/bin/tazmin-domains <<'DM'
