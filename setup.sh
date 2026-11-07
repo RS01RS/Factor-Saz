@@ -139,7 +139,7 @@ server {
     include snippets/tazmin-body.conf;
 }
 NG
-EXTRA=$(cat "$APP/tazmin_app/.domains" 2>/dev/null | tr -s ' \n' ' ' | sed 's/^ *//;s/ *$//')
+EXTRA=$( { cat "$APP/tazmin_app/.domains" 2>/dev/null || true; } | tr -s ' \n' ' ' | sed 's/^ *//;s/ *$//' || true)
 if [ -n "$EXTRA" ]; then
 cat > /etc/nginx/sites-available/tazmin-extra <<NG
 server {
@@ -197,7 +197,7 @@ cat > /usr/local/bin/tazmin-domains <<'DM'
 # استفاده: sudo tazmin-domains api.tazmintaraz.ir app.tazmintaraz.ir tazmintaraz.ir www.tazmintaraz.ir
 F=/var/www/tazmin/tazmin_app/.domains
 IP=$(ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++)if($i=="src")print $(i+1)}' | head -1); PUB=$(curl -fsS4 --max-time 8 https://api.ipify.org 2>/dev/null)
-L=$(cat "$F" 2>/dev/null)
+L=$(cat "$F" 2>/dev/null || true)
 for d in "$@"; do d=$(echo "$d" | tr 'A-Z' 'a-z'); echo "$d" | grep -Eq '^[a-z0-9.-]+\.[a-z]{2,}$' || { echo "✗ نامعتبر: $d"; continue; }; L="$L $d"; done
 OK=""; for d in $(echo $L | tr ' ' '\n' | sort -u); do R=$(dig +short A "$d" | tail -1)
   if [ "$R" = "$IP" ] || [ "$R" = "$PUB" ]; then OK="$OK $d"; echo "✓ $d"; else echo "✗ $d هنوز به این سرور اشاره نمی‌کند (الان: ${R:-هیچ})"; fi; done
