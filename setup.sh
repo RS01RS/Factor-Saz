@@ -244,7 +244,9 @@ GT
 cat > /usr/local/bin/tazmin-apk <<'AP'
 #!/usr/bin/env bash
 # همین حالا آخرین نسخهٔ برنامه را از گیت‌هاب روی سرور بگذار
-runuser -u www-data -- php /var/www/tazmin/tazmin_app/cron.php apk force
+# بدون --force فقط اگر نسخهٔ تازه‌تری باشد دانلود می‌کند؛ با --force دوباره دانلود می‌کند
+F=""; [ "${1:-}" = "--force" ] && F="force"
+runuser -u www-data -- php /var/www/tazmin/tazmin_app/cron.php apk $F
 AP
 cat > /usr/local/bin/tazmin-sms-template <<'ST'
 #!/usr/bin/env bash
