@@ -43,6 +43,8 @@ apt-get install -y -qq nginx mariadb-server php-fpm php-cli php-mysql php-curl p
 PHPV=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
 SOCK=/run/php/php${PHPV}-fpm.sock
 ok "PHP $PHPV"
+# آپلود عکس در تیکت‌ها و اعلان‌ها
+if [ -d /etc/php/$PHPV/fpm/conf.d ]; then printf 'upload_max_filesize = 8M\npost_max_size = 16M\nmax_file_uploads = 8\n' > /etc/php/$PHPV/fpm/conf.d/99-tazmin.ini; systemctl reload php$PHPV-fpm 2>/dev/null || systemctl restart php$PHPV-fpm 2>/dev/null || true; fi
 
 say "۲/۸ دریافت و باز کردن کد سرور"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
