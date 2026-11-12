@@ -44,7 +44,7 @@ PHPV=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
 SOCK=/run/php/php${PHPV}-fpm.sock
 ok "PHP $PHPV"
 # آپلود عکس در تیکت‌ها و اعلان‌ها
-if [ -d /etc/php/$PHPV/fpm/conf.d ]; then printf 'upload_max_filesize = 8M\npost_max_size = 16M\nmax_file_uploads = 8\n' > /etc/php/$PHPV/fpm/conf.d/99-tazmin.ini; systemctl reload php$PHPV-fpm 2>/dev/null || systemctl restart php$PHPV-fpm 2>/dev/null || true; fi
+if [ -d /etc/php/$PHPV/fpm/conf.d ]; then printf 'upload_max_filesize = 8M\npost_max_size = 16M\nmax_file_uploads = 8\nexpose_php = Off\ndisplay_errors = Off\nallow_url_include = Off\nsession.use_strict_mode = 1\n' > /etc/php/$PHPV/fpm/conf.d/99-tazmin.ini; systemctl reload php$PHPV-fpm 2>/dev/null || systemctl restart php$PHPV-fpm 2>/dev/null || true; fi
 
 say "۲/۸ دریافت و باز کردن کد سرور"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
@@ -126,9 +126,12 @@ cat > /etc/nginx/snippets/tazmin-body.conf <<NG
     server_tokens off;
     add_header X-Content-Type-Options nosniff always;
     add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
     location ~ /\. { deny all; }
+    location ~* \.(sql|bak|old|orig|swp|env|log|ini|sh|zip|tar|gz|pem|key|jks)\$ { deny all; }
     location /$PANEL/ { try_files \$uri /$PANEL/index.php\$is_args\$args; }
-    location /app/ { index index.html; try_files \$uri \$uri/ /index.php\$is_args\$args; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header X-Frame-Options DENY always; }
+    location /app/ { index index.html; try_files \$uri \$uri/ /index.php\$is_args\$args; add_header Cache-Control "no-cache" always; add_header X-Content-Type-Options nosniff always; add_header X-Frame-Options DENY always; add_header Referrer-Policy strict-origin-when-cross-origin always; add_header Strict-Transport-Security "max-age=31536000" always; add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.tazmintaraz.ir https://api.tazminhesabdari.ir https://api.taraztazmin.ir; media-src 'self' blob: data:; worker-src 'self' blob:; frame-src 'self' blob: data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always; }
     location / { try_files \$uri /index.php\$is_args\$args; }
     location ~ \.php\$ {
         include snippets/fastcgi-php.conf;
@@ -355,6 +358,39 @@ echo
 echo "این کلید را در چت یا جای دیگری نفرست؛ فقط در گیت‌هاب بگذار. با اجرای دوبارهٔ همین دستور، کلید قبلی باطل می‌شود."
 DK
 chmod 755 /usr/local/bin/tazmin-deploy-key
+cat > /usr/local/bin/tazmin-security <<'SEC'
+#!/usr/bin/env bash
+# بررسی امنیت سرور تضمین تراز و (با اجازه) سخت‌تر کردن آن
+G='\033[1;32m✓\033[0m'; R='\033[1;31m✗\033[0m'; Y='\033[1;33m!\033[0m'
+echo "======== امنیت سرور ========"
+ufw status | grep -q "Status: active" && echo -e "$G دیوار آتش (ufw) روشن" || echo -e "$R دیوار آتش خاموش  ←  sudo ufw allow OpenSSH; sudo ufw allow 'Nginx Full'; sudo ufw enable"
+systemctl is-active --quiet fail2ban && echo -e "$G fail2ban روشن (جلوی حدس رمز SSH)" || echo -e "$R fail2ban خاموش  ←  sudo systemctl enable --now fail2ban"
+[ -f /etc/apt/apt.conf.d/20auto-upgrades ] && grep -q '"1"' /etc/apt/apt.conf.d/20auto-upgrades && echo -e "$G به‌روزرسانی امنیتی خودکار روشن" || echo -e "$Y به‌روزرسانی خودکار  ←  sudo dpkg-reconfigure unattended-upgrades"
+PA=$(sshd -T 2>/dev/null | awk '/^passwordauthentication/{print $2}'); RL=$(sshd -T 2>/dev/null | awk '/^permitrootlogin/{print $2}')
+[ "$PA" = "no" ] && echo -e "$G ورود SSH فقط با کلید" || echo -e "$Y ورود SSH با رمز هم ممکن است (بهتر: فقط کلید)"
+[ "$RL" = "no" ] || [ "$RL" = "prohibit-password" ] || [ "$RL" = "without-password" ] && echo -e "$G ورود root با رمز بسته" || echo -e "$Y ورود root با رمز باز است"
+C=/var/www/tazmin/tazmin_app/config.php; [ "$(stat -c %a $C 2>/dev/null)" = "600" ] && echo -e "$G دسترسی config.php درست (600)" || echo -e "$R دسترسی config.php  ←  sudo chmod 600 $C"
+grep -q "'debug' => true" $C 2>/dev/null && echo -e "$R حالت debug روشن است!" || echo -e "$G حالت debug خاموش"
+for d in $(cat /var/www/tazmin/tazmin_app/.domain /var/www/tazmin/tazmin_app/.domains 2>/dev/null); do E=$(echo | timeout 6 openssl s_client -servername $d -connect $d:443 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+  [ -n "$E" ] && echo -e "$G SSL $d تا $E" || echo -e "$Y SSL $d بررسی نشد"; done
+echo "پورت‌های باز:"; ss -tlnp 2>/dev/null | awk 'NR>1{print "   "$4}' | sort -u
+echo "آخرین ورودهای SSH:"; last -n 5 -a 2>/dev/null | head -5 | sed 's/^/   /'
+echo "IPهای مسدودشده توسط fail2ban:"; fail2ban-client status sshd 2>/dev/null | grep -E "Currently banned|Total banned" | sed 's/^/   /'
+echo
+if [ "$1" = "--harden" ]; then
+  echo "======== سخت‌تر کردن ========"
+  ufw allow OpenSSH >/dev/null; ufw allow 'Nginx Full' >/dev/null; ufw --force enable >/dev/null && echo -e "$G ufw"
+  systemctl enable --now fail2ban >/dev/null 2>&1 && echo -e "$G fail2ban"
+  chmod 600 $C; chmod 700 /var/www/tazmin/tazmin_app/keys 2>/dev/null; echo -e "$G دسترسی فایل‌ها"
+  U=${SUDO_USER:-root}; H=$(getent passwd "$U" | cut -d: -f6)
+  if [ -s "$H/.ssh/authorized_keys" ] || [ -s /root/.ssh/authorized_keys ]; then
+    read -rp "کلید SSH پیدا شد. ورود SSH با رمز بسته شود (فقط با کلید)؟ مطمئن باش با کلید وارد می‌شوی. [y/N] " A < /dev/tty
+    if [ "$A" = "y" ]; then printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\n' > /etc/ssh/sshd_config.d/99-tazmin.conf; sshd -t && systemctl reload ssh 2>/dev/null || systemctl reload sshd; echo -e "$G فقط ورود با کلید"; fi
+  else echo -e "$Y کلید SSH روی سرور نیست؛ ورود با رمز بسته نشد (وگرنه خودت هم بیرون می‌مانی). راهنما: پوشهٔ 03-سرور ← امنیت"; fi
+fi
+[ "$1" = "--harden" ] || echo "برای اعمال اصلاحات امن:  sudo tazmin-security --harden"
+SEC
+chmod 755 /usr/local/bin/tazmin-security
 chmod 755 /usr/local/bin/tazmin-github-token /usr/local/bin/tazmin-apk
 chmod 755 /usr/local/bin/tazmin-update
 say "۸/۸ گواهی SSL"
